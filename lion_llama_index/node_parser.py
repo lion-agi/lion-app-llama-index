@@ -1,38 +1,25 @@
 from typing import Any
 
-from lionagi.os.sys_util import SysUtil
+from lion_core.sys_utils import SysUtil
+from llama_index.core.node_parser.interface import NodeParser
 
 
-def get_llamaindex_node_parser(node_parser: Any):
-
-    NodeParser = SysUtil.check_import(
-        package_name="llama_index",
-        module_name="core.node_parser.interface",
-        import_name="NodeParser",
-        pip_name="llama-index",
-    )
-
-    if not isinstance(node_parser, str) and not issubclass(node_parser, NodeParser):
-        raise TypeError("node_parser must be a string or NodeParser.")
+def get_llamaindex_node_parser(node_parser: type[NodeParser] | str) -> type[NodeParser]:
 
     if isinstance(node_parser, str):
         if node_parser == "CodeSplitter":
             SysUtil.check_import("tree_sitter_languages")
 
-        try:
-            _parser = SysUtil.import_module(
-                package_name="llama_index",
-                module_name="core.node_parser",
-            )
-            return getattr(_parser, node_parser)
-        except Exception as e:
-            raise AttributeError(
-                f"llama_index_core has no such attribute:" f" {node_parser}, Error: {e}"
-            ) from e
+        return SysUtil.import_module(
+            package_name="llama_index",
+            module_name="core.node_parser",
+            import_name=node_parser,
+        )
 
-    elif isinstance(node_parser, NodeParser):
+    elif issubclass(node_parser, NodeParser):
         return node_parser
 
+    raise TypeError("node_parser must be a string or NodeParser.")
 
 def llamaindex_parse_node(
     documents: list,
