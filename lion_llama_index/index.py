@@ -1,60 +1,44 @@
-from typing import Type, Any
+from typing import Any
+from lion_core.generic.pile import Pile
+from lion_core.generic.component import Component
+from llama_index.core.indices.base import BaseIndex
+from llama_index.core.indices import VectorStoreIndex
+from llama_index.core.llms import LLM
+from llama_index.core.schema import TextNode
 
-from lionagi.os.primitives import Node, Pile
-from lionagi.os.sys_util import SysUtil
-from .config import DEFAULT_MODEL
+import llama_index.core.indices as Indices
+from .converter import to_llama_index
+
+NODES_TYPES = TextNode | Component
 
 
-def create_llamaindex(
-    nodes: list | Pile | Any,
-    *args,  # additional index init args
-    index_type: Type | None = None,
-    llm=None,
-    model_config: dict = None,
-    return_llama_nodes=False,
-    **kwargs,  # additional index init kwargs
+def create_llama_index(
+    nodes: list[NODES_TYPES] | Pile[NODES_TYPES] | NODES_TYPES,
+    *args,
+    index_type: BaseIndex | str | None = None,
+    llm: LLM | None = None,
+    return_llama_nodes: bool = False,
+    **kwargs: Any,
 ):
-    Settings = SysUtil.check_import(
-        package_name="llama_index",
-        module_name="core",
-        import_name="Settings",
-        pip_name="llama-index",
-    )
+    from llama_index.core import Settings
 
-    if not llm:
-        OpenAI = SysUtil.import_module(
-            package_name="llama_index",
-            module_name="llms.openai",
-            import_name="OpenAI",
-        )
-        config = {**(model_config or {})}
-        config["model"] = config.pop("model", DEFAULT_MODEL)
-        llm = OpenAI(**config)
-
-    Settings.llm = llm
-
-    if not index_type:
-        VectorStoreIndex = SysUtil.import_module(
-            package_name="llama_index",
-            module_name="core",
-            import_name="VectorStoreIndex",
-        )
-
-        index_type = VectorStoreIndex
-
+    if isinstance(nodes, TextNode | Component):
+        nodes = [nodes]
     if isinstance(nodes, Pile):
         nodes = list(nodes)
 
-    if not isinstance(nodes, list):
-        nodes = [nodes]
+    llama_nodes = [to_llama_index(node) for node in nodes]
 
-    _nodes = []
-    for i in nodes:
-        if isinstance(i, Node):
-            i = i.convert_to("llamaindex")
-        _nodes.append(i)
+    if llm and isinstance(llm, LLM):
+        Settings.llm = llm
 
-    out = index_type(_nodes, *args, **kwargs)
+    if index_type is None:
+        index_type = VectorStoreIndex
+
+    elif isinstance(index_type, str):
+        index_type: BaseIndex = getattr(Indices, index_type)
+
+    out = index_type(llama_nodes, *args, **kwargs)
     if return_llama_nodes:
-        return out, _nodes
+        return out, llama_nodes
     return out
