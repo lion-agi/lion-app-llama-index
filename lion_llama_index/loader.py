@@ -1,84 +1,21 @@
-import json
 from typing import Any
-from lionagi.os.sys_util import SysUtil
-from lionagi.os.libs import to_dict
-from lionagi.os.primitives import note
+from lion_core.libs import strip_lower
+from lion_core.sys_utils import SysUtil
+from llama_index.core.readers.base import BasePydanticReader
+from llama_index.core.readers import SimpleDirectoryReader
+from llama_index.core.schema import BaseNode
 
 
-def load_llamaindex_vector_store(folder):
-    files = ["default__vector_store", "docstore", "index_store"]
-    paths = [f"{folder}/{file}.json" for file in files]
-
-    notes = {}
-    for idx, p in enumerate(paths):
-        a = json.load(open(p))
-        notes[files[idx]] = note(**a)
-
-    doc_note = notes["docstore"]
-    vec_note = notes["default__vector_store"]
-    index_note = notes["index_store"]
-
-    for i in index_note["index_store/data"].keys():
-        cp = ["index_store/data", i, "__data__"]
-        index_note[cp] = to_dict(index_note[cp])
-
-    def _get_index_node_list(index_id_):
-        cp = ["index_store/data", index_id_, "__data__", "nodes_dict"]
-        try:
-            index_note[cp] = to_dict(index_note[cp])
-        except:
-            raise Exception(f"Index {index_id_} not found")
-
-        nodes_dict = index_note[cp]
-        all_nodes = list(nodes_dict.keys())
-        out = []
-
-        for i in all_nodes:
-            cp = ["docstore/data", i, "__data__"]
-            doc_note[cp] = to_dict(doc_note[cp])
-            dict_ = doc_note[cp]
-
-            cp = ["embedding_dict", i]
-            dict_["embedding"] = vec_note[cp]
-            out.append(dict_)
-
-        return out
-
-    results = [_get_index_node_list(i) for i in index_note["index_store/data"].keys()]
-
-    return results if len(results) > 1 else results[0]
-
-
-def get_llama_index_loader(reader: Any | str = None, *args, **kwargs) -> Any:
-
-    SimpleDirectoryReader = SysUtil.check_import(
-        package_name="llama_index",
-        module_name="core",
-        import_name="SimpleDirectoryReader",
-        pip_name="llama-index",
-    )
-
-    BasePydanticReader = SysUtil.import_module(
-        package_name="llama_index",
-        module_name="core.readers.base",
-        import_name="BasePydanticReader",
-    )
-
-    if reader in [
-        "SimpleDirectoryReader",
-        SimpleDirectoryReader,
-        "simple-directory-reader",
-        "simple_directory_reader",
-        "simple",
-        "simple_reader",
-        "simple-reader",
-    ]:
-        reader = SimpleDirectoryReader()
-        loader = reader(*args, **kwargs)
-        return loader
+def get_llama_index_loader(
+    reader: type[BasePydanticReader] | str = None,
+    *args: Any,
+    **kwargs: Any,
+) -> BasePydanticReader:
+    if reader is None or (isinstance(reader, str) and "simple" in strip_lower(reader)):
+        reader = SimpleDirectoryReader
 
     if not isinstance(reader, str) and not issubclass(reader, BasePydanticReader):
-        raise TypeError(f"reader must be a string or BasePydanticReader.")
+        raise TypeError(f"reader must be a string or a subclass of BasePydanticReader.")
 
     if isinstance(reader, str):
         package_name, pip_name = parse_reader_name(reader)
@@ -188,15 +125,15 @@ def parse_reader_name(reader_str):
 
 
 def llamaindex_loader(
-    reader=None,
+    reader: str | BasePydanticReader = None,
     /,
-    *args,
-    reader_args=[],
-    reader_kwargs={},
-    **kwargs,
-) -> Any:
+    *args: Any,
+    reader_args: list = [],
+    reader_kwargs: dict = {},
+    **kwargs: Any,
+) -> list[BaseNode]:
     try:
-        loader = get_llama_index_loader(reader, *reader_args, **reader_kwargs)
+        loader = get_llama_index_loader(reader=reader, *reader_args, **reader_kwargs)
         documents = loader.load_data(*args, **kwargs)
         return documents
     except Exception as e:
