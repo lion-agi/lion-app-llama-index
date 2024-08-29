@@ -1,1 +1,2 @@
 llama-index
+lion-core
