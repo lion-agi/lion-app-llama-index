@@ -1,30 +1,56 @@
-from lion_core.converter import Converter
-
-from lionagi.os.libs import to_dict
+from re import T
+from typing import Any
+from llama_index.core.schema import BaseNode, TextNode
+import llama_index.core.schema as Schema
 from .utils import LLAMAINDEX_META_FIELDS
 
 
-class LlamaIndexNodeConverter(Converter):
+def convert_llama_index_to_lion_dict(object_: BaseNode, **kwargs: Any) -> dict:
 
-    @staticmethod
-    def from_obj(cls, obj, **kwargs) -> dict:
-        dict_ = to_dict(obj, **kwargs)
+    dict_ = object_.to_dict()
+    dict_["content"] = dict_.pop("text", None)
+    metadata = dict_.pop("metadata", {})
 
-        dict_["content"] = dict_.pop("text", None)
-        metadata = dict_.pop("metadata", {})
+    for field in LLAMAINDEX_META_FIELDS:
+        metadata[field] = dict_.pop(field, None)
 
-        for field in LLAMAINDEX_META_FIELDS:
-            metadata[field] = dict_.pop(field, None)
+    dict_["metadata"] = {"llama_index_metadata": metadata}
 
-        metadata["llama_index_class"] = metadata.pop("class_name", None)
-        metadata["llama_index_id"] = metadata.pop("id_", None)
-        metadata["llama_index_relationships"] = metadata.pop("relationships", None)
-        dict_["metadata"] = metadata
-        return dict_
+    return dict_
 
-    @staticmethod
-    def to_obj(self, node_type="TextNode", **kwargs):
-        from .textnode import to_llama_index_node
 
-        dict_ = to_dict(self, **kwargs)
-        return to_llama_index_node(node_type=node_type, **dict_)
+def convert_lion_to_llama_index_dict(subject: dict | Any, **kwargs: Any) -> dict:
+    if not isinstance(subject, dict):
+        subject = subject.to_dict()
+
+    dict_ = {}
+    metadata: dict = subject.pop("metadata", {})
+    llama_meta: dict = metadata.pop("llama_index_metadata", {})
+
+    for field in LLAMAINDEX_META_FIELDS:
+        dict_[field] = llama_meta.pop(field, None)
+
+    dict_["text"] = subject.pop("content", None)
+    dict_["metadata"] = {"lion_metadata": metadata, **llama_meta}
+
+    return dict_
+
+
+def to_llama_index(
+    subject: dict | TextNode | Any,
+    convert_kwargs: dict = {},
+    llama_node_type: str | BaseNode | None = None,
+    **kwargs: Any,
+) -> BaseNode:
+
+    if isinstance(subject, BaseNode):
+        return subject
+
+    if isinstance(llama_node_type, str):
+        llama_node_type: BaseNode = getattr(Schema, llama_node_type)
+
+    if llama_node_type is None:
+        llama_node_type = TextNode
+
+    subject = convert_lion_to_llama_index_dict(subject=subject, **convert_kwargs)
+    return llama_node_type.from_dict(subject)
